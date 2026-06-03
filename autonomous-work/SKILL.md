@@ -8,7 +8,7 @@ description: >
   where all questions and verifications happen, followed by an execution phase with zero
   user interaction.
 metadata:
-  author: ene
+  author: nitpum
   version: "1.0.0"
 ---
 
@@ -71,6 +71,12 @@ For every tool, command, API, or resource the task requires, verify access **bef
 - **Authentication**: If credentials or tokens are needed, verify they exist and work.
 - **Package availability**: If installing packages, verify the package manager works and the package exists.
 - **Container runtime**: If using podman/docker, verify the daemon is running.
+- **Opencode permission gates**: When running inside opencode, certain actions require user approval that will block autonomous execution. Specifically check:
+  - File paths outside the current workspace — test that you can read/write them without an approval prompt.
+  - Bash commands targeting external directories — verify they do not trigger approval.
+  - Network requests (URL fetches, API calls) — confirm they are not gated.
+  - Destructive or system-modifying commands — check if they require approval.
+  - Test every tool call pattern you plan to use during execution to confirm it works without interactive approval.
 
 If **any** verification fails, report the failure to the user and ask for resolution before proceeding. Do not assume you can fix it during execution.
 
@@ -184,3 +190,16 @@ When finished (whether fully successful or partially), output a structured repor
 - Commands that open editors (`git commit` without `-m`, `crontab -e`) will hang. Use non-interactive alternatives.
 - Long-running commands may time out. Use timeout-aware execution and consider backgrounding with status checks.
 - If the task scope is very large, consider breaking it into sub-tasks with individual validation checkpoints rather than one monolithic execution.
+
+### Opencode Permission Approval Traps
+
+When running inside **opencode**, certain tool calls and commands require explicit user approval. During autonomous execution the user is unreachable, so **any approval prompt will block and hang indefinitely**. You must anticipate and avoid these during pre-flight:
+
+- **File access outside workspace scope**: Reading, writing, or editing files outside the current workspace directory may trigger a user approval prompt. During pre-flight, identify every external path the task needs and either (a) get the user to pre-approve access, (b) rework the plan to stay within the workspace, or (c) explicitly warn the user that autonomous execution will block on approval.
+- **Bash commands to external directories**: Running commands that target paths outside the workspace (e.g., `cp /workspace/file /etc/config`) can trigger approval. Use `workdir` parameter for directory changes and keep all operations within workspace boundaries when possible.
+- **Network requests**: Fetching URLs or calling external APIs via tools may require approval. If the task needs network access, verify during pre-flight that the specific URLs or domains will not trigger an approval gate.
+- **Destructive or privileged commands**: Commands like `rm -rf`, `sudo`, `chmod`, `pip install` (system-wide), or any operation that modifies system state may require approval. Always prefer non-destructive alternatives and scoped operations.
+- **Tool calls with approval gates**: Some tool calls (e.g., Write to new files outside known directories, Bash with certain command patterns) may be gated. During pre-flight Step 3, **test every tool call pattern** you plan to use during execution to confirm it does not require interactive approval.
+- **Pre-flight mitigation**: During Step 3 (Verify Tools, Permissions, and Environment), explicitly list every file path, URL, and command that falls outside normal workspace scope. For each one, either confirm it is pre-approved or ask the user to grant approval before execution begins.
+
+**Rule of thumb**: If there is any doubt about whether a tool call or command will require approval, assume it will. Either avoid it, pre-approve it, or flag it as a risk in the plan.

@@ -2,7 +2,7 @@
 name: create-skill
 description: Create Agent Skills for AI agents. Use when asked to create, build, or write a new skill, or when asked about the Agent Skills format, SKILL.md structure, or skill best practices.
 metadata:
-  author: ene
+  author: nitpum
   version: "1.0"
   source: https://agentskills.io
 ---
