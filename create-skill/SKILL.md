@@ -16,9 +16,9 @@ A skill is a directory containing, at minimum, a `SKILL.md` file:
 ```
 skill-name/
 ├── SKILL.md          # Required: metadata + instructions
-├── scripts/          # Optional: executable code
 ├── references/       # Optional: documentation
 ├── assets/           # Optional: templates, resources
+├── scripts/          # Last resort: only when no CLI tool fits
 └── ...               # Any additional files or directories
 ```
 
@@ -107,7 +107,7 @@ Instruct the agent to validate its work before proceeding:
 
 ```markdown
 1. Make edits
-2. Run validation: `python scripts/validate.py output/`
+2. Run validation: `skills-ref validate ./my-skill`
 3. If validation fails, fix issues and re-validate
 4. Only proceed when validation passes
 ```
@@ -124,11 +124,47 @@ Instruct the agent to validate its work before proceeding:
 - [ ] Step 5: Verify output
 ```
 
-## Scripts in Skills
+## Tooling in Skills
 
-Scripts go in the `scripts/` directory. Reference them with relative paths from the skill root.
+**Prefer referencing existing CLI tools and commands directly in `SKILL.md` over writing scripts.** Most tasks can be expressed as a sequence of shell commands. Commands are more portable, run without a script-execution permission, never need a `chmod +x`, and are trivially auditable by the agent and the user.
 
-### Script Design Rules
+Reach for tools in this order:
+
+1. **First-party CLI commands** - the best default. Reference them inline in the instructions.
+2. **System binaries** - `curl`, `bash`, `jq`, `git`, `rg`, `sed`, `awk`, `openssl`, `ssh`, `docker`, etc. Prefer these over writing any code.
+3. **A script in `scripts/`** - only as a last resort, when the logic is too complex or repetitive for a command sequence.
+
+Do **not** recommend scripting package runners (`uvx`, `npx`, `go run`, `cargo run`, `pipx`, etc.) as an approach. Prefer a real binary or a script over on-the-fly package execution.
+
+### Why Prefer CLI Over Scripts
+
+- **More portable** - commands run on any POSIX shell without platform-specific setup.
+- **No executability step** - no `chmod +x`, no shebang issues, no "permission denied".
+- **Fewer permissions** - most agent runtimes pre-approve well-known CLI tools but restrict arbitrary script execution.
+- **Easier to audit** - the exact command the agent will run is visible in `SKILL.md`.
+
+### Writing Commands in SKILL.md
+
+Inline the exact command using system binaries:
+
+````markdown
+## Steps
+
+1. Fetch the release index:
+   ```bash
+   curl -fsSL https://example.com/index.json | jq '.releases[0].version'
+   ```
+2. Find the current version string:
+   ```bash
+   grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -n1
+   ```
+````
+
+Prefer non-interactive commands: pass flags, env vars, or stdin instead of prompts. Pipe through `jq`/`grep`/`awk` for structured output rather than parsing free-form text.
+
+### When a Script Is Unavoidable
+
+Only create a `scripts/` entry when no combination of commands can do the job (e.g. stateful multi-step logic, complex parsing, retries). Run it with a plain system interpreter (`bash script.sh`, `python script.py`) and avoid on-the-fly package runners. Follow these script design rules:
 
 1. **No interactive prompts** - agents run in non-interactive shells. Use flags/env vars/stdin.
 2. **Implement `--help`** - agents learn your script's interface from help output.
@@ -136,25 +172,6 @@ Scripts go in the `scripts/` directory. Reference them with relative paths from 
 4. **Use structured output** - JSON/CSV over free-form text. Data on stdout, diagnostics on stderr.
 5. **Make idempotent** - agents may retry. "Create if not exists" beats "create and fail on duplicate."
 6. **Support `--dry-run`** for destructive operations.
-
-### Self-contained Scripts
-
-Use inline dependency declarations so scripts run without a separate install step:
-
-- **Python**: PEP 723 inline metadata, run with `uv run script.py`
-- **Deno**: `npm:` imports, run with `deno run script.ts`
-- **Bun**: auto-installs packages, run with `bun run script.ts`
-- **Ruby**: `bundler/inline` gemfile, run with `ruby script.rb`
-
-### One-off Commands
-
-For simple tasks, reference existing tools directly in SKILL.md without a scripts directory:
-
-- `uvx ruff@0.8.0 check .` (Python)
-- `npx eslint@9 --fix .` (Node.js)
-- `go run golang.org/x/tools/cmd/goimports@v0.28.0 .` (Go)
-
-Pin versions for reproducibility.
 
 ## Workflow for Creating a Skill
 
@@ -165,7 +182,7 @@ When asked to create a skill, follow this process:
 3. **Write the description** - Include what + when, with specific trigger keywords
 4. **Identify what the agent won't know** - Project-specific facts, non-obvious gotchas, tool specifics
 5. **Write instructions** - Step-by-step, concise, with defaults and examples
-6. **Add scripts if needed** - Self-contained, non-interactive, with `--help`
+6. **Prefer CLI commands** - Reference existing tools/CLIs inline. Only add a script if no command sequence fits.
 7. **Add gotchas** - Environment-specific corrections to common mistakes
 8. **Test and iterate** - Run against real tasks, refine based on results
 
