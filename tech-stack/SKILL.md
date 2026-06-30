@@ -2,12 +2,12 @@
 name: tech-stack
 description: >
   The user's preferred tech stack for new projects and features. Use when starting a new
-  project, choosing technologies, scaffolding an app, picking a backend language, deciding
-  on a frontend approach, building a web UI, adding interactivity to a page, choosing a
-  build tool, selecting a CSS framework, picking a state management library, or building a
-  game. Also use when the user mentions Go, Golang, Alpine.js, Vite, Vitest, React, UnoCSS,
-  Jotai, Godot, GDScript, three.js, or phaser.js. Core philosophy: simple, portable,
-  minimal tooling, few dependencies.
+  project, choosing technologies, scaffolding an app, picking a backend language, building a
+  CLI tool, deciding on a frontend approach, building a web UI, adding interactivity to a
+  page, choosing a build tool, selecting a CSS framework, picking a state management
+  library, or building a game. Also use when the user mentions Go, Golang, Alpine.js, Vite,
+  Vitest, React, UnoCSS, Jotai, Godot, GDScript, three.js, or phaser.js. Core philosophy:
+  simple, portable, minimal tooling, few dependencies.
 ---
 
 # Preferred Tech Stack
@@ -24,12 +24,13 @@ When choosing tech for a new task, work top-down and stop at the first that fits
 3. The smallest viable build-tool setup (Vite) when a real SPA is required.
 4. Avoid heavy frameworks, runtimes, or anything requiring a long install/dependency chain unless the task demands it.
 
-## Backend: Go
+## Backend & CLI: Go
 
-Default backend language: **Go**.
+Default for backend services **and CLI tools**: **Go**.
 
 - Lightweight, simple, fast to compile, produces a single small static binary.
-- Strong standard library covers most needs without external deps — prefer stdlib first.
+- Cross-compile to any OS/arch with `GOOS`/`GOARCH` — one binary per target, no install step on the user's machine.
+- Strong standard library covers most needs without external deps — prefer stdlib first (e.g. `flag` or `os.Args` for arg parsing, `net/http`, `encoding/json`, `os/exec`).
 - Add external dependencies only when the stdlib cannot do the job. Fewer deps = worry-free upgrades and security.
 - No runtime or VM to install on the target; ship one binary.
 
@@ -64,7 +65,7 @@ For small web-only games, prefer **three.js** or **phaser.js** (single-file incl
 
 ## Gotchas
 
-- Do NOT reach for Node, npm, or pip when a single Go binary or a single `<script>` include will do. When a Node package manager is genuinely needed, default to **pnpm**.
+- Do NOT reach for Node, npm, or pip when a single Go binary or a single `<script>` include will do. This includes CLI tools — prefer Go over a Node/Python script. When a Node package manager is genuinely needed, default to **pnpm**.
 - Alpine.js is loaded via a plain `<script src>` tag, NOT via npm import. Keep it that way for simple cases.
 - Prefer Go stdlib over pulling a third-party module. Only add a dependency when the gap is real.
 - The "advanced web" stack (Vite/React/UnoCSS/Jotai) is opt-in, not default. Confirm the UI actually needs it before scaffolding.
