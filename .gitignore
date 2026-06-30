@@ -78,3 +78,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,linux,macos,dotenv
+
+# local-repo-index: per-machine repo catalogue (local data, do not share)
+local-repo-index/references/index.json
