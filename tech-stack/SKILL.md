@@ -7,8 +7,9 @@ description: >
   page, choosing a build tool, selecting a CSS framework, picking a state management
   library, or building a game. Also use when picking a database or the user mentions Go, Golang,
   Alpine.js, Vite, Vitest, React, UnoCSS, Jotai, Godot, GDScript, three.js, phaser.js, libsql,
-  libSQL, SQLite, or PostgreSQL. Core philosophy: simple, portable, minimal tooling, few
-  dependencies.
+  libSQL, SQLite, or PostgreSQL. Also use when a C/C++ toolchain is needed or the user mentions
+  Zig, zig cc, cgo, cross-compilation, or a C compiler. Core philosophy: simple, portable,
+  minimal tooling, few dependencies.
 ---
 
 # Preferred Tech Stack
@@ -34,6 +35,49 @@ Default for backend services **and CLI tools**: **Go**.
 - Strong standard library covers most needs without external deps — prefer stdlib first (e.g. `flag` or `os.Args` for arg parsing, `net/http`, `encoding/json`, `os/exec`).
 - Add external dependencies only when the stdlib cannot do the job. Fewer deps = worry-free upgrades and security.
 - No runtime or VM to install on the target; ship one binary.
+- When **cgo** is needed (wrapping a C library, or a dependency pulls in C), use **`zig cc`** as
+  the C/C++ compiler — see "C/C++ Toolchain" below. Do not require a system `gcc`/`clang`.
+
+## C/C++ Toolchain: `zig cc`
+
+Default C/C++ compiler for any project that needs one (Go cgo, Rust builds needing a C
+toolchain, native C/C++ code, cross-compilation): **Zig**'s drop-in compiler driver, `zig cc`
+/ `zig c++`.
+
+- One self-contained Zig download provides a full, modern clang+lld-based C/C++ toolchain
+  with **no system dependencies** — no `build-essential`, no Xcode, no separate LLVM install.
+- Works as a transparent drop-in: set `CC=zig cc` and `CXX=zig c++` and most build systems
+  (Go, Cargo, CMake, Make, Bazel, etc.) just work.
+- **Best-in-class cross-compilation out of the box.** Target any OS/arch with a single flag,
+  e.g. `zig cc -target x86_64-windows-gnu` or `zig cc -target aarch64-linux-musl`. No
+  sysroot juggling, no separate toolchain per target.
+- Produces fully static binaries easily when paired with musl, which lines up with the
+  "ship one binary, no install step" philosophy.
+- Prefer this over installing `gcc`/`clang`/MinGW/etc. whenever a C toolchain is required.
+
+### Go with cgo via `zig cc`
+
+When a Go project needs cgo, compile with Zig instead of a system C compiler:
+
+```sh
+export CC="zig cc"
+export CXX="zig c++"
+CGO_ENABLED=1 go build ./...
+```
+
+For cross-compilation, point `zig cc` at the target through a small wrapper so cgo inherits
+the target triple, e.g. for `linux/amd64` static musl builds:
+
+```sh
+# save as e.g. ~/.local/bin/zigcc-musl-amd64
+#!/bin/sh
+exec zig cc -target x86_64-linux-musl "$@"
+```
+
+then `CC=$HOME/.local/bin/zigcc-musl-amd64 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build`.
+
+This avoids the usual pain of setting up a cross C toolchain for cgo and keeps the
+one-command build story intact.
 
 ## Database
 
@@ -90,3 +134,4 @@ For small web-only games, prefer **three.js** or **phaser.js** (single-file incl
 - In Godot, GDScript is the default language, not C# or GDExtension/C++.
 - When a task fits the lightweight path, do not propose the heavy path "just in case" — that contradicts the user's philosophy.
 - For databases, default to **libSQL** (fall back to plain SQLite). Only reach for **PostgreSQL** when a real need for a full-fledged database exists.
+- When a C/C++ toolchain is needed (Go cgo, Rust with C deps, native C/C++, cross-compiling), default to **`zig cc`** / **`zig c++`** rather than installing `gcc`, `clang`, MinGW, or a per-target sysroot.
