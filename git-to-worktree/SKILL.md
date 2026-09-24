@@ -52,6 +52,10 @@ cd DEST
 git worktree add main      main
 git worktree add featureA  featureA
 git worktree add featureB  featureB
+
+# 5. Ensure the fetch refspec exists (see "Missing fetch refspec" below)
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+git fetch origin
 ```
 
 Resulting layout matches the diagram above. The orphaned source tree (`SRC/`, now without `.git`) can be deleted once verified: `rm -rf SRC`.
@@ -66,6 +70,33 @@ git -C DEST/main stash list                     # stashes survived (shared refs)
 
 Recover a stash from any worktree: `cd DEST/main && git stash pop`.
 
+## Missing fetch refspec (post-conversion fix)
+
+After conversion, `remote.origin.fetch` may be missing or wrong (e.g. the source was a bare/mirror clone, or config was lost). Without it, `git fetch` does not populate `refs/remotes/origin/*`, so `origin/<branch>` refs go stale or missing. Fix from anywhere inside the repo (any worktree works — config is shared in the bare repo):
+
+```bash
+# 1. Check if the fetch refspec is missing (empty output = missing)
+git config remote.origin.fetch
+
+# 2. Add the standard refspec back (this is the exact line git clone writes)
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+
+# 3. Fetch everything to populate refs/remotes/origin/* properly
+git fetch origin
+
+# 4. Confirm origin/<default> now matches the real remote tip
+git log --oneline -1 origin/master
+```
+
+To sanity-check step 4 against the source of truth (GitLab):
+
+```bash
+glab api projects/<group>%2F<project>/repository/branches/master \
+  | jq '.commit.short_id, .commit.title'
+```
+
+If the two don't match, the refspec still isn't working — but once step 2 is applied it will.
+
 ## Workflow
 
 - [ ] Confirm `SRC` is non-bare: `git -C SRC rev-parse --is-bare-repository` → `false`.
@@ -73,6 +104,7 @@ Recover a stash from any worktree: `cd DEST/main && git stash pop`.
 - [ ] List local branches to decide worktrees: `git -C SRC for-each-ref --format='%(refname:short)' refs/heads/`.
 - [ ] Make a backup of `SRC`.
 - [ ] Run the procedure (move `.git`, set bare, `worktree add` per branch).
+- [ ] Restore the fetch refspec if missing, then `git fetch origin` and verify `origin/<default>` matches the remote tip.
 - [ ] Verify branch/tag/stash counts are unchanged.
 - [ ] Delete the orphaned `SRC` tree if no uncommitted changes remain there.
 
@@ -82,6 +114,7 @@ Recover a stash from any worktree: `cd DEST/main && git stash pop`.
 - **"already checked out" on the default branch**: after flipping to bare, the bare repo's HEAD still symrefs the old default branch. Modern Git treats a bare main worktree as *not* holding a checkout, so this usually doesn't trigger. If it does, either pass `--force` to that `worktree add` (safe here — there are no other worktrees yet), or detach/redirect the bare HEAD first: `git --git-dir=DEST/.git symbolic-ref HEAD refs/heads/<other-branch>`.
 - **Uncommitted working-tree changes are NOT in `.git`** and stay behind in `SRC/` once `.git` is moved. Commit or stash them first, or copy them into the new worktree manually before deleting `SRC`.
 - **Running git from the container root**: `DEST/` contains a `.git`, so running git commands from `DEST/` itself latches onto the bare repo ("bare repository"). Do real work inside the worktree subdirectories (`DEST/main/`, etc.).
+- **Missing `remote.origin.fetch`**: without the refspec `+refs/heads/*:refs/remotes/origin/*`, fetch never updates `refs/remotes/origin/*` and tracking refs silently rot. Always check/restore it after conversion (see "Missing fetch refspec" above).
 - **Submodules**: worktree + submodule support is incomplete upstream. `.git/modules` stays in the bare dir; submodule checkouts need separate handling per worktree — out of scope for this skill.
 - **Idempotency**: refuse an existing `DEST`. Remove it (or pick another path) to re-run.
 - Requires Git ≥ 2.5 for `worktree add` (≥ 2.20 recommended).
