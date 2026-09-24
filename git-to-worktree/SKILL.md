@@ -97,6 +97,8 @@ glab api projects/<group>%2F<project>/repository/branches/master \
 
 If the two don't match, the refspec still isn't working — but once step 2 is applied it will.
 
+Note: this isn't a one-time post-conversion check. The config can go missing later (something rewrites `.git/config`, or a worktree was added before the refspec existed). Spot-check `git config remote.origin.fetch` whenever remote-tracking refs look stale.
+
 ## Workflow
 
 - [ ] Confirm `SRC` is non-bare: `git -C SRC rev-parse --is-bare-repository` → `false`.
