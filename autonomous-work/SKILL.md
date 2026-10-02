@@ -9,7 +9,7 @@ description: >
   user interaction.
 metadata:
   author: nitpum
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Autonomous Work — Zero-Interaction Task Protocol
@@ -188,6 +188,7 @@ When finished (whether fully successful or partially), output a structured repor
 - Package managers may prompt for input even with flags. Test the exact command in pre-flight.
 - Git operations that require credentials will fail. Verify SSH keys or tokens are configured.
 - Commands that open editors (`git commit` without `-m`, `crontab -e`) will hang. Use non-interactive alternatives.
+- **No AI attribution in commits.** Never add `Co-authored-by:` trailers pointing at an AI tool or its vendor (e.g. `Co-authored-by: Claude <noreply@anthropic.com>`, `Co-Authored-By: Copilot <noreply@github.com>`), nor any "Generated with …" / "🤖 Generated with" / "Signed-off-by: <ai>" lines. This applies to commit messages, merge commits, PR descriptions, code comments, and docs. The user does not want the repo to advertise an AI vendor. Omit all such trailers and signatures unless the user explicitly asks for them.
 - Long-running commands may time out. Use timeout-aware execution and consider backgrounding with status checks.
 - If the task scope is very large, consider breaking it into sub-tasks with individual validation checkpoints rather than one monolithic execution.
 
