@@ -15,7 +15,7 @@ description: >
   imperfect English.
 metadata:
   author: nitpum
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # grammar-correct
@@ -125,11 +125,13 @@ Append to the end of your final response — **always**, clean or not.
 - goes → went — tense: "yesterday" needs past
 - milks → milk — plural: uncountable noun
 
+---
+
 - Polite: "I went to the store yesterday and bought some milk."
 - Casual: "I went to the store yesterday and grabbed some milk."
 ```
 
-The fix bullets come first (rendered from the sub-agent's `Why:` line), then the rewrites. One bullet per fix, reason ≤ 8 words.
+The fix bullets come first (rendered from the sub-agent's `Why:` line), then a `---` horizontal-rule separator, then the rewrites. One bullet per fix, reason ≤ 8 words. Clean messages show no separator — just the ✅ line.
 
 **When the grammar is already correct:**
 
@@ -154,11 +156,11 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct/history.jsonl
 **Format** — one JSON line per checked natural-language message (clean ones too; they're needed to compute an error rate):
 
 ```json
-{"ts":"2026-10-02T07:11:01Z","kinds":{"tense":2,"article":1},"words":18,"fixes":[["goes","went"],["milks","milk"]]}
-{"ts":"2026-10-02T07:40:12Z","kinds":{},"words":12}
+{"d":"2026-10-02+07:00","kinds":{"tense":2,"article":1},"words":18,"fixes":[["goes","went"],["milks","milk"]]}
+{"d":"2026-10-02+07:00","kinds":{},"words":12}
 ```
 
-`kinds` is empty when the message was clean. `fixes` holds the single-word mistake→correction pairs (from the sub-agent's `Fixes:` line) and is **omitted** when there are none. The kind vocabulary, definitions, examples, and tie-breaker rules live in the **sub-agent prompt template** above — that is the single source of truth; every sub-agent gets the same guide pasted into its prompt so tagging stays consistent. Do not edit one without the other.
+`d` is the **date only** (`YYYY-MM-DD`, via `date +%F`) — no time-of-day and no timezone are ever stored (privacy: nothing reveals when you wrote or where you are). `kinds` is empty when the message was clean. `fixes` holds the single-word mistake→correction pairs (from the sub-agent's `Fixes:` line) and is **omitted** when there are none. The kind vocabulary, definitions, examples, and tie-breaker rules live in the **sub-agent prompt template** above — that is the single source of truth; every sub-agent gets the same guide pasted into its prompt so tagging stays consistent. Do not edit one without the other.
 
 **Write-permission guard** — check once per session, before the first write:
 
@@ -173,13 +175,13 @@ If either command fails, tracking is **off for the rest of the session**: no ret
 
 ```bash
 D="${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct"
-printf '%s\n' '{"ts":"'"$(date -u +%FT%TZ)"'","kinds":{"tense":2,"article":1},"words":18}' >> "$D/history.jsonl"
+printf '%s\n' '{"d":"'"$(date +%F)"'","kinds":{"tense":2,"article":1},"words":18}' >> "$D/history.jsonl"
 ```
 
 Build the `kinds` object from the sub-agent's `Kinds:` line; use `{}` when clean (a clean message is **always** still logged — that's what makes the clean rate meaningful); take `words` from its `Words:` value (estimate with `wc -w` if missing); build `"fixes":[["do","does"],…]` from its `Fixes:` line and omit the key entirely on `Fixes: none`. Only skip the log when an *error* message comes back without a `Kinds:` line.
 
 **Privacy rules:**
-- Never store the user's message text, the rewrites, or anything identifying — only `ts`, `kinds`, `words`, and `fixes`.
+- Never store the user's message text, the rewrites, or anything identifying — only `d` (**date only — no time-of-day, no timezone**), `kinds`, `words`, and `fixes`.
 - Explanations are display-only. The `Why:` micro-reasons are shown to the user in the response and are **never written to the log** — `history.jsonl` contains no prose at all.
 - `fixes` entries must be plain lowercase English dictionary words only (the sub-agent filters; trust its `Fixes:` line, don't re-derive from the message). Names, proper nouns, product/technical terms, commands, code, identifiers, and anything potentially sensitive are never logged. When in doubt, the word is omitted.
 - The file is local-only. Never commit it, never sync it, never paste its raw contents into a response without the user asking.
@@ -198,17 +200,18 @@ jq -s '
              errors: (map(errs) | add // 0),
              errorsPerMsg: (if length == 0 then 0 else ((map(errs) | add // 0) / length * 100 | round / 100) end),
              cleanRate: (if length == 0 then 0 else (map(select((.kinds|length)==0)) | length) * 100 / length | round end)};
-  (now - 604800) as $c7 | (now - 1209600) as $c14 |
-  {last7: (map(select((.ts|fromdateiso8601) >= $c7)) | summ),
-   prev7: (map(select((.ts|fromdateiso8601) >= $c14 and (.ts|fromdateiso8601) < $c7)) | summ),
-   topKinds7: (map(select((.ts|fromdateiso8601) >= $c7)) | map(.kinds) | add // {}
+  ((now - 604800) | gmtime | strftime("%Y-%m-%d")) as $c7 |
+  ((now - 1209600) | gmtime | strftime("%Y-%m-%d")) as $c14 |
+  {last7: (map(select(.d >= $c7)) | summ),
+   prev7: (map(select(.d >= $c14 and .d < $c7)) | summ),
+   topKinds7: (map(select(.d >= $c7)) | map(.kinds) | add // {}
                | to_entries | sort_by(-.value) | .[0:5] | from_entries),
-   topFixes7: (map(select((.ts|fromdateiso8601) >= $c7)) | map(.fixes // []) | add // []
+   topFixes7: (map(select(.d >= $c7)) | map(.fixes // []) | add // []
                | group_by(.) | map({(.[0] | join("→")): length}) | add // {})}
 ' "$STATE"
 ```
 
-Portable: uses jq's `now` instead of shell `date -d` (GNU-only, absent on macOS/BSD). Everything else (`mkdir -p`, `touch`, `printf`, `date -u +%FT%TZ`) works on macOS as-is.
+Portable: cutoff dates are computed inside jq (`now`/`gmtime`/`strftime`) and compared as date strings — no shell `date -d` (GNU-only) anywhere, works on macOS/BSD. Day granularity is intentional: no time-of-day exists in the log.
 
 If `jq` is missing, read the file and compute the same numbers inline (python3 or by hand).
 
@@ -252,10 +255,12 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   - buy → bought — tense: same past chain
   - milks → milk — plural: uncountable
 
+  ---
+
   - Polite: "I went to the store yesterday and bought some milk."
   - Casual: "I went to the store yesterday and grabbed some milk."
   ```
-- Main agent logs: `{"ts":"<now>","kinds":{"tense":2,"plural":1},"words":10,"fixes":[["goes","went"],["buy","bought"],["milks","milk"]]}` — no reasons stored
+- Main agent logs: `{"d":"<today>","kinds":{"tense":2,"plural":1},"words":10,"fixes":[["goes","went"],["buy","bought"],["milks","milk"]]}` — no reasons stored
 
 **Example 2 — wrong verb form / preposition**
 - User message: `I am agree with you, we should focuses in that.`
@@ -278,7 +283,7 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   ### ✍️ Grammar
   ✅ Correct — no corrections needed.
   ```
-- Main agent logs: `{"ts":"<now>","kinds":{},"words":3}`
+- Main agent logs: `{"d":"<today>","kinds":{},"words":3}`
 
 ---
 
@@ -297,6 +302,6 @@ If the `Task` tool cannot be used, the main agent does the correction **inline a
 - **Code blocks, quotes, and pasted content inside the user's message are not theirs to fix** — skip quoted/pasted regions and only correct the user's own prose.
 - **Short messages** (one or two words, greetings like "hi", or pure punctuation) → skip silently.
 - **Tracking is best-effort.** If the state dir isn't writable, disable logging for the session — don't retry every message, don't mention it, don't let it touch the real task.
-- **Never log message text.** Only `ts`, `kinds`, `words`, and `fixes` — where `fixes` is restricted to plain lowercase English dictionary words. Names, product/technical terms, and anything sensitive never enter the log. `history.jsonl` stays on the user's machine — never commit it to any repo.
+- **Never log message text.** Only `d`, `kinds`, `words`, and `fixes` — where `d` is the bare date and `fixes` is restricted to plain lowercase English dictionary words. Names, product/technical terms, and anything sensitive never enter the log. `history.jsonl` stays on the user's machine — never commit it to any repo.
 - **Don't force a progress report.** Only show 📊 stats when the user asks for them.
 - **Tag with the fixed guide only.** Never invent new kinds or reclassify mid-conversation — consistency of the categories is what makes the stats meaningful over time.
