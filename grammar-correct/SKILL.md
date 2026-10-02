@@ -15,7 +15,7 @@ description: >
   imperfect English.
 metadata:
   author: nitpum
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # grammar-correct
@@ -92,6 +92,11 @@ Rules:
   subject mismatch? agreement. (2) noun number itself wrong? plural; determiner/verb
   mismatching the noun? agreement. (3) function word → article (a/an/the) or preposition
   (in/on/at/with/to…), else word-choice. Use the message's total word count for Words.
+- On the final Fixes line, list single-word fixes as wrong→right, all lowercase:
+  ONLY ordinary English dictionary words (do→does, histroy→history). NEVER include names,
+  proper nouns, product/technical terms, commands, code, identifiers, numbers, URLs, or
+  any word that could identify the user or leak sensitive content — when in doubt, omit it.
+  If a fix spans multiple words, is an insertion/deletion, or no word qualifies, use: Fixes: none
 
 Reply in EXACTLY this format and nothing else:
 
@@ -99,6 +104,7 @@ Reply in EXACTLY this format and nothing else:
 • Polite: "<rewrite>"
 • Casual: "<rewrite>"
 Kinds: tense×2, article×1 — Words: 18
+Fixes: goes→went, milks→milk
 ```
 
 ---
@@ -139,11 +145,11 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct/history.jsonl
 **Format** — one JSON line per checked natural-language message (clean ones too; they're needed to compute an error rate):
 
 ```json
-{"ts":"2026-10-02T07:11:01Z","kinds":{"tense":2,"article":1},"words":18}
+{"ts":"2026-10-02T07:11:01Z","kinds":{"tense":2,"article":1},"words":18,"fixes":[["goes","went"],["milks","milk"]]}
 {"ts":"2026-10-02T07:40:12Z","kinds":{},"words":12}
 ```
 
-`kinds` is empty when the message was clean. The kind vocabulary, definitions, examples, and tie-breaker rules live in the **sub-agent prompt template** above — that is the single source of truth; every sub-agent gets the same guide pasted into its prompt so tagging stays consistent. Do not edit one without the other.
+`kinds` is empty when the message was clean. `fixes` holds the single-word mistake→correction pairs (from the sub-agent's `Fixes:` line) and is **omitted** when there are none. The kind vocabulary, definitions, examples, and tie-breaker rules live in the **sub-agent prompt template** above — that is the single source of truth; every sub-agent gets the same guide pasted into its prompt so tagging stays consistent. Do not edit one without the other.
 
 **Write-permission guard** — check once per session, before the first write:
 
@@ -161,10 +167,11 @@ D="${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct"
 printf '%s\n' '{"ts":"'"$(date -u +%FT%TZ)"'","kinds":{"tense":2,"article":1},"words":18}' >> "$D/history.jsonl"
 ```
 
-Build the `kinds` object from the sub-agent's `Kinds:` line; use `{}` when clean (a clean message is **always** still logged — that's what makes the clean rate meaningful); take `words` from its `Words:` value (estimate with `wc -w` if missing). Only skip the log when an *error* message comes back without a `Kinds:` line.
+Build the `kinds` object from the sub-agent's `Kinds:` line; use `{}` when clean (a clean message is **always** still logged — that's what makes the clean rate meaningful); take `words` from its `Words:` value (estimate with `wc -w` if missing); build `"fixes":[["do","does"],…]` from its `Fixes:` line and omit the key entirely on `Fixes: none`. Only skip the log when an *error* message comes back without a `Kinds:` line.
 
 **Privacy rules:**
-- Never store the user's message text, the rewrites, or anything identifying — only `ts`, `kinds`, `words`.
+- Never store the user's message text, the rewrites, or anything identifying — only `ts`, `kinds`, `words`, and `fixes`.
+- `fixes` entries must be plain lowercase English dictionary words only (the sub-agent filters; trust its `Fixes:` line, don't re-derive from the message). Names, proper nouns, product/technical terms, commands, code, identifiers, and anything potentially sensitive are never logged. When in doubt, the word is omitted.
 - The file is local-only. Never commit it, never sync it, never paste its raw contents into a response without the user asking.
 
 ---
@@ -185,7 +192,9 @@ jq -s '
   {last7: (map(select((.ts|fromdateiso8601) >= $c7)) | summ),
    prev7: (map(select((.ts|fromdateiso8601) >= $c14 and (.ts|fromdateiso8601) < $c7)) | summ),
    topKinds7: (map(select((.ts|fromdateiso8601) >= $c7)) | map(.kinds) | add // {}
-               | to_entries | sort_by(-.value) | .[0:5] | from_entries)}
+               | to_entries | sort_by(-.value) | .[0:5] | from_entries),
+   topFixes7: (map(select((.ts|fromdateiso8601) >= $c7)) | map(.fixes // []) | add // []
+               | group_by(.) | map({(.[0] | join("→")): length}) | add // {})}
 ' "$STATE"
 ```
 
@@ -206,6 +215,7 @@ If `jq` is missing, read the file and compute the same numbers inline (python3 o
 
 Verdict: improving 📈 — 0.83 → 0.42 errors/message, clean rate 30% → 60% (last 7d vs prior 7d).
 Top mistakes: article (6), tense (4), preposition (3).
+Slip words: do→does (5), themselve→themselves (2).
 Tip: watch your articles — "a/an/the" is your most frequent slip.
 ```
 
@@ -221,8 +231,9 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   • Polite: "I went to the store yesterday and bought some milk."
   • Casual: "I went to the store yesterday and grabbed some milk."
   Kinds: tense×2, plural×1 — Words: 10
+  Fixes: goes→went, buy→bought, milks→milk
   ```
-- Main agent logs: `{"ts":"<now>","kinds":{"tense":2,"plural":1},"words":10}`
+- Main agent logs: `{"ts":"<now>","kinds":{"tense":2,"plural":1},"words":10,"fixes":[["goes","went"],["buy","bought"],["milks","milk"]]}`
 
 **Example 2 — wrong verb form / preposition**
 - User message: `I am agree with you, we should focuses in that.`
@@ -232,7 +243,9 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   • Polite: "I agree with you; we should focus on that."
   • Casual: "I'm with you — we should focus on that."
   Kinds: verb-form×2, agreement×1 — Words: 9
+  Fixes: focuses→focus, in→on
   ```
+  ("am agree" → "agree" is a deletion, so it appears in Kinds but not in Fixes.)
 
 **Example 3 — already clean (✅)**
 - User message: `See you tomorrow.`
@@ -261,6 +274,6 @@ If the `Task` tool cannot be used, the main agent does the correction **inline a
 - **Code blocks, quotes, and pasted content inside the user's message are not theirs to fix** — skip quoted/pasted regions and only correct the user's own prose.
 - **Short messages** (one or two words, greetings like "hi", or pure punctuation) → skip silently.
 - **Tracking is best-effort.** If the state dir isn't writable, disable logging for the session — don't retry every message, don't mention it, don't let it touch the real task.
-- **Never log message text.** Only `ts`, `kinds`, `words`. `history.jsonl` stays on the user's machine — never commit it to any repo.
+- **Never log message text.** Only `ts`, `kinds`, `words`, and `fixes` — where `fixes` is restricted to plain lowercase English dictionary words. Names, product/technical terms, and anything sensitive never enter the log. `history.jsonl` stays on the user's machine — never commit it to any repo.
 - **Don't force a progress report.** Only show 📊 stats when the user asks for them.
 - **Tag with the fixed guide only.** Never invent new kinds or reclassify mid-conversation — consistency of the categories is what makes the stats meaningful over time.
