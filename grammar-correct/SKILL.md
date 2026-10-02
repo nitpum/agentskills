@@ -15,7 +15,7 @@ description: >
   imperfect English.
 metadata:
   author: nitpum
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # grammar-correct
@@ -24,7 +24,7 @@ metadata:
 
 A lightweight, **non-blocking** English grammar checker. Whenever the user writes a natural-language message, hand it to a background sub-agent for correction while you keep doing the real work. The result is a short note appended at the end of your response — never a wall of explanation.
 
-The user values short, correction-only output. Show the fix, not the lesson.
+The user values short output: the fix with a one-line why — never a grammar lecture.
 
 ---
 
@@ -34,7 +34,7 @@ The user values short, correction-only output. Show the fix, not the lesson.
 - **Two registers.** When there are errors, give exactly two rewrites:
   - **Polite** — clear, professional but friendly. How you'd write to a colleague or acquaintance you respect. Not stiff, not slangy.
   - **Casual** — relaxed, contractions welcome, colloquial. How you'd text a friend.
-- **No explanations.** No "you should use past tense because…". Just the corrected sentences.
+- **Micro-reasons, no lectures.** Each fix gets its kind + a reason of at most ~8 words ("goes → went — tense: 'yesterday' needs past"). No "you should use past tense because…" essays. Reasons appear only in the displayed note — never in the stored log.
 - **Never blocks the real task.** The main agent must start the real work immediately; grammar correction happens off to the side.
 - **Tracks progress locally.** Every checked message is logged as one JSON line — mistake categories and word count only, **never the message text** — to `${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct/history.jsonl`. If that path isn't writable, tracking is silently disabled; it must never warn, error, or block.
 
@@ -97,13 +97,17 @@ Rules:
   proper nouns, product/technical terms, commands, code, identifiers, numbers, URLs, or
   any word that could identify the user or leak sensitive content — when in doubt, omit it.
   If a fix spans multiple words, is an insertion/deletion, or no word qualifies, use: Fixes: none
+- On the Why line, give EVERY fix (single-word or not) as wrong→right with its kind and a
+  micro-reason of at most ~8 words: "goes→went (tense — 'yesterday' needs past)",
+  "am agree→agree (verb-form — 'agree' is already a verb)". Display-only, never logged.
 
 Reply in EXACTLY this format and nothing else:
 
 ✍️ Grammar
 • Polite: "<rewrite>"
 • Casual: "<rewrite>"
-Kinds: tense×2, article×1 — Words: 18
+Why: goes→went (tense — "yesterday" needs past), milks→milk (plural — uncountable)
+Kinds: tense×2, plural×1 — Words: 18
 Fixes: goes→went, milks→milk
 ```
 
@@ -118,9 +122,14 @@ Append to the end of your final response — **always**, clean or not.
 ```markdown
 ### ✍️ Grammar
 
+- goes → went — tense: "yesterday" needs past
+- milks → milk — plural: uncountable noun
+
 - Polite: "I went to the store yesterday and bought some milk."
 - Casual: "I went to the store yesterday and grabbed some milk."
 ```
+
+The fix bullets come first (rendered from the sub-agent's `Why:` line), then the rewrites. One bullet per fix, reason ≤ 8 words.
 
 **When the grammar is already correct:**
 
@@ -171,6 +180,7 @@ Build the `kinds` object from the sub-agent's `Kinds:` line; use `{}` when clean
 
 **Privacy rules:**
 - Never store the user's message text, the rewrites, or anything identifying — only `ts`, `kinds`, `words`, and `fixes`.
+- Explanations are display-only. The `Why:` micro-reasons are shown to the user in the response and are **never written to the log** — `history.jsonl` contains no prose at all.
 - `fixes` entries must be plain lowercase English dictionary words only (the sub-agent filters; trust its `Fixes:` line, don't re-derive from the message). Names, proper nouns, product/technical terms, commands, code, identifiers, and anything potentially sensitive are never logged. When in doubt, the word is omitted.
 - The file is local-only. Never commit it, never sync it, never paste its raw contents into a response without the user asking.
 
@@ -230,10 +240,22 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   ✍️ Grammar
   • Polite: "I went to the store yesterday and bought some milk."
   • Casual: "I went to the store yesterday and grabbed some milk."
+  Why: goes→went (tense — "yesterday" needs past), buy→bought (tense — same past chain), milks→milk (plural — uncountable)
   Kinds: tense×2, plural×1 — Words: 10
   Fixes: goes→went, buy→bought, milks→milk
   ```
-- Main agent logs: `{"ts":"<now>","kinds":{"tense":2,"plural":1},"words":10,"fixes":[["goes","went"],["buy","bought"],["milks","milk"]]}`
+- Displayed:
+  ```
+  ### ✍️ Grammar
+
+  - goes → went — tense: "yesterday" needs past
+  - buy → bought — tense: same past chain
+  - milks → milk — plural: uncountable
+
+  - Polite: "I went to the store yesterday and bought some milk."
+  - Casual: "I went to the store yesterday and grabbed some milk."
+  ```
+- Main agent logs: `{"ts":"<now>","kinds":{"tense":2,"plural":1},"words":10,"fixes":[["goes","went"],["buy","bought"],["milks","milk"]]}` — no reasons stored
 
 **Example 2 — wrong verb form / preposition**
 - User message: `I am agree with you, we should focuses in that.`
@@ -242,10 +264,11 @@ Tip: watch your articles — "a/an/the" is your most frequent slip.
   ✍️ Grammar
   • Polite: "I agree with you; we should focus on that."
   • Casual: "I'm with you — we should focus on that."
+  Why: am agree→agree (verb-form — "agree" is already a verb), focuses→focus (verb-form — modal takes base form), in→on (preposition — "focus on")
   Kinds: verb-form×2, agreement×1 — Words: 9
   Fixes: focuses→focus, in→on
   ```
-  ("am agree" → "agree" is a deletion, so it appears in Kinds but not in Fixes.)
+  ("am agree" → "agree" is a deletion, so it appears in Why and Kinds but not in Fixes.)
 
 **Example 3 — already clean (✅)**
 - User message: `See you tomorrow.`
