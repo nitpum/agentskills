@@ -15,7 +15,7 @@ description: >
   imperfect English.
 metadata:
   author: nitpum
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # grammar-correct
@@ -75,9 +75,23 @@ Rules:
 - Keep each rewrite one or two lines. Preserve the original meaning and tone of voice.
 - Fix grammar, spelling, tense, articles, prepositions, word order, and agreement only.
   Do NOT censor, do NOT rewrite clean sentences, do NOT add content.
-- On the final Kinds line, count each mistake by kind using this vocabulary:
-  tense, verb-form, agreement, plural, article, preposition, word-order, word-choice,
-  spelling, punctuation, other. Use the message's total word count for Words.
+- On the final Kinds line, tag each mistake using EXACTLY this guide (fixed vocabulary —
+  never invent kinds; count each error instance once):
+  - tense — wrong verb time: "I go yesterday" → "went"
+  - verb-form — wrong verb form, not time: "I am agree" → "I agree", "should focuses" → "should focus"
+  - agreement — subject–verb person/number mismatch: "he go" → "he goes", "they was" → "were"
+  - plural — noun number/countability: "some milks" → "milk", "two book" → "books"
+  - article — a/an/the wrong, missing, or extra: "a advice" → "some advice", "please a privacy" → "for privacy"
+  - preposition — wrong/missing/extra in/on/at/with/to/for…: "focuses in" → "focus on"
+  - word-order — wrong sequence: "always I go" → "I always go", "a red big car" → "a big red car"
+  - word-choice — wrong/extra/missing word not covered above: "make a photo" → "take a photo", "want to consistency" → "want consistency"
+  - spelling — misspelling, including capitalization: "entirr" → "entire", "macos" → "macOS"
+  - punctuation — missing/wrong , . ? ! ' " ; —: "works on macOS right" → "works on macOS, right?"
+  - other — genuine error none of the above cover (use sparingly)
+  Tie-breakers (apply in order): (1) verb error → time wrong? tense; form wrong? verb-form;
+  subject mismatch? agreement. (2) noun number itself wrong? plural; determiner/verb
+  mismatching the noun? agreement. (3) function word → article (a/an/the) or preposition
+  (in/on/at/with/to…), else word-choice. Use the message's total word count for Words.
 
 Reply in EXACTLY this format and nothing else:
 
@@ -129,7 +143,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct/history.jsonl
 {"ts":"2026-10-02T07:40:12Z","kinds":{},"words":12}
 ```
 
-`kinds` is empty when the message was clean. Kind vocabulary: `tense`, `verb-form`, `agreement`, `plural`, `article`, `preposition`, `word-order`, `word-choice`, `spelling`, `punctuation`, `other`.
+`kinds` is empty when the message was clean. The kind vocabulary, definitions, examples, and tie-breaker rules live in the **sub-agent prompt template** above — that is the single source of truth; every sub-agent gets the same guide pasted into its prompt so tagging stays consistent. Do not edit one without the other.
 
 **Write-permission guard** — check once per session, before the first write:
 
@@ -249,3 +263,4 @@ If the `Task` tool cannot be used, the main agent does the correction **inline a
 - **Tracking is best-effort.** If the state dir isn't writable, disable logging for the session — don't retry every message, don't mention it, don't let it touch the real task.
 - **Never log message text.** Only `ts`, `kinds`, `words`. `history.jsonl` stays on the user's machine — never commit it to any repo.
 - **Don't force a progress report.** Only show 📊 stats when the user asks for them.
+- **Tag with the fixed guide only.** Never invent new kinds or reclassify mid-conversation — consistency of the categories is what makes the stats meaningful over time.
