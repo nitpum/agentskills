@@ -161,19 +161,21 @@ Trigger: the user asks about their grammar progress — "am I improving?", "what
 
 ```bash
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/grammar-correct/history.jsonl"
-c7=$(date -u -d '7 days ago' +%FT%TZ); c14=$(date -u -d '14 days ago' +%FT%TZ)
-jq -s --arg c7 "$c7" --arg c14 "$c14" '
+jq -s '
   def errs: (.kinds | to_entries | map(.value) | add) // 0;
   def summ: {messages: length,
              errors: (map(errs) | add // 0),
              errorsPerMsg: (if length == 0 then 0 else ((map(errs) | add // 0) / length * 100 | round / 100) end),
              cleanRate: (if length == 0 then 0 else (map(select((.kinds|length)==0)) | length) * 100 / length | round end)};
-  {last7: (map(select(.ts >= $c7)) | summ),
-   prev7: (map(select(.ts >= $c14 and .ts < $c7)) | summ),
-   topKinds7: (map(select(.ts >= $c7)) | map(.kinds) | add // {}
+  (now - 604800) as $c7 | (now - 1209600) as $c14 |
+  {last7: (map(select((.ts|fromdateiso8601) >= $c7)) | summ),
+   prev7: (map(select((.ts|fromdateiso8601) >= $c14 and (.ts|fromdateiso8601) < $c7)) | summ),
+   topKinds7: (map(select((.ts|fromdateiso8601) >= $c7)) | map(.kinds) | add // {}
                | to_entries | sort_by(-.value) | .[0:5] | from_entries)}
 ' "$STATE"
 ```
+
+Portable: uses jq's `now` instead of shell `date -d` (GNU-only, absent on macOS/BSD). Everything else (`mkdir -p`, `touch`, `printf`, `date -u +%FT%TZ`) works on macOS as-is.
 
 If `jq` is missing, read the file and compute the same numbers inline (python3 or by hand).
 
